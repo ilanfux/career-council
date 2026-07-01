@@ -1,40 +1,33 @@
-"""Repo-context gathering for non-grounded (provider) backends.
+"""Materials-context gathering for non-grounded (provider) backends.
 
-Cursor-backed personas browse the repo themselves. Provider backends (OpenAI/
-Anthropic/Google) are plain chat calls, so we capture a snapshot of the change
-under review and prepend it to their prompt. This is lower-fidelity than an agent
-that can open any file, but it keeps `file:line` citations possible.
+Cursor-backed personas read the materials folder themselves. Provider backends
+(OpenAI/Anthropic/Google) are plain chat calls, so we capture a snapshot of the
+candidate's materials (resume, job description, notes) in `cwd` and prepend it to
+their prompt.
 
-The snapshot is bounded so we never blow up a provider context window.
+`--cwd` for a career council is normally an ordinary folder of documents, not a
+git repo, so we read text files directly from disk. (If it happens to be a git
+repo we still fall back to a file listing.) The snapshot is bounded so we never
+blow up a provider context window.
 """
 
 from __future__ import annotations
 
-import subprocess
+import os
+from pathlib import Path
 from typing import List, Optional
 
-_MAX_DIFF_CHARS = 60_000
-_MAX_TREE_LINES = 200
-
-
-def _run_git(args: List[str], cwd: str) -> Optional[str]:
-    try:
-        result = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
-            capture_output=True,
-            # Decode as UTF-8 and replace undecodable bytes: git output (diffs of
-            # binary/non-latin files) is not the Windows ANSI codepage, and the
-            # default cp1252 decoder would crash the reader thread.
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0:
-        return None
-    return result.stdout
+_MAX_TOTAL_CHARS = 60_000
+_MAX_FILE_CHARS = 20_000
+_MAX_FILES = 25
+# Text formats a resume / JD / notes realistically live in. Binary formats
+# (.pdf/.docx) are skipped here — ask the user to export to text, or rely on the
+# grounded Cursor backend which can open them.
+_TEXT_SUFFIXES = {
+    ".txt", ".md", ".markdown", ".rst", ".json", ".yaml", ".yml",
+    ".csv", ".tsv", ".html", ".htm", ".tex", ".text", ".log",
+}
+_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".idea", ".vscode"}
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -43,40 +36,59 @@ def _truncate(text: str, limit: int) -> str:
     return text[:limit] + f"\n... [truncated, {len(text) - limit} more chars] ..."
 
 
-def gather_repo_context(cwd: str, diff_scope: Optional[str] = None) -> str:
-    """Build a bounded text snapshot of the repo state for prompt injection.
+def _gather_from_filesystem(cwd: str) -> List[str]:
+    """Read bounded text content from the materials folder (non-git path)."""
 
-    Prefers the uncommitted diff (working tree + staged). Falls back to the last
-    commit's diff, then to a file tree, so a provider persona always has something
-    concrete to ground citations in.
+    root = Path(cwd)
+    if not root.is_dir():
+        return []
+
+    sections: List[str] = []
+    total = 0
+    count = 0
+    for path in sorted(root.rglob("*")):
+        if count >= _MAX_FILES or total >= _MAX_TOTAL_CHARS:
+            break
+        if path.is_dir():
+            continue
+        if any(part in _SKIP_DIRS for part in path.parts):
+            continue
+        if path.suffix.lower() not in _TEXT_SUFFIXES:
+            continue
+        try:
+            body = path.read_text(encoding="utf-8", errors="replace").strip()
+        except (OSError, ValueError):
+            continue
+        if not body:
+            continue
+        rel = path.relative_to(root).as_posix()
+        chunk = _truncate(body, _MAX_FILE_CHARS)
+        sections.append(f"### {rel}\n```\n{chunk}\n```")
+        total += len(chunk)
+        count += 1
+    return sections
+
+
+def gather_repo_context(cwd: str, diff_scope: Optional[str] = None) -> str:
+    """Build a bounded text snapshot of the candidate's materials for prompt
+    injection into non-grounded (provider) backends.
+
+    Reads text files under `cwd` (resume, JD, notes). Returns "" when there is
+    nothing to ground in, so the caller can warn.
     """
 
     sections: List[str] = []
     if diff_scope:
-        sections.append(f"## Change under review\n{diff_scope.strip()}")
+        sections.append(f"## Focus\n{diff_scope.strip()}")
 
-    # Uncommitted changes (staged + unstaged), with a few lines of context.
-    diff = _run_git(["diff", "HEAD", "--unified=3"], cwd)
-    if not (diff and diff.strip()):
-        # Nothing uncommitted; show the most recent commit instead.
-        diff = _run_git(["diff", "HEAD~1", "HEAD", "--unified=3"], cwd)
-
-    if diff and diff.strip():
-        sections.append("## Diff (paths are real; cite file:line from these)\n```diff\n"
-                        + _truncate(diff.strip(), _MAX_DIFF_CHARS) + "\n```")
-    else:
-        tree = _run_git(["ls-files"], cwd)
-        if tree and tree.strip():
-            lines = tree.strip().splitlines()
-            shown = "\n".join(lines[:_MAX_TREE_LINES])
-            if len(lines) > _MAX_TREE_LINES:
-                shown += f"\n... [{len(lines) - _MAX_TREE_LINES} more files] ..."
-            sections.append("## Repository files\n```\n" + shown + "\n```")
+    materials = _gather_from_filesystem(cwd)
+    if materials:
+        sections.append("## Candidate materials (ground every claim in these)\n" + "\n\n".join(materials))
 
     if not sections:
         return ""
     header = (
-        "You cannot browse the repository directly. The material below is your only "
-        "evidence; ground every citation in it.\n\n"
+        "You cannot browse the materials folder directly. The material below is your "
+        "only evidence; ground every claim in it and never invent anything not shown.\n\n"
     )
     return header + "\n\n".join(sections)

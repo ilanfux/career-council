@@ -80,7 +80,8 @@ def plan_council(
     if not tier.convene:
         return CouncilPlan(mode=mode, stakes=tier.name, convened=False, peer_review=False)
 
-    if _cursor_referenced(config, mode, do_peer):
+    prelim_personas, _ = select_personas(config, mode, tier, council_input.roster)
+    if _cursor_needed_for(config, prelim_personas, do_peer):
         try:
             available, param_catalog = _discover_models(api_key)
             if available:
@@ -142,15 +143,16 @@ def run_council(
 
     do_peer = council_input.peer_review_override if council_input.peer_review_override is not None else tier.peer_review
 
-    # Only query the Cursor catalog (for fallback + param validation) when a
-    # cursor-backed selection actually exists in this mode.
-    if _cursor_referenced(config, mode, do_peer):
+    # Only query the Cursor catalog (for fallback + param validation) when the
+    # SELECTED roster (not just the mode) actually uses a cursor-backed agent.
+    prelim_personas, _ = select_personas(config, mode, tier, council_input.roster)
+    if _cursor_needed_for(config, prelim_personas, do_peer):
         available, param_catalog = _discover_models(api_key)
         if not available:
             raise SdkUnavailableError(
                 "Could not confirm which Cursor models your key can use (the model "
                 "list came back empty). Refusing to dispatch with unverified model "
-                "ids/params. Check your network/CURSOR_API_KEY and run `council models`."
+                "ids/params. Check your network/CURSOR_API_KEY and run `career-council models`."
             )
         resolve_models(config, available)
         validate_model_params(config, param_catalog)
@@ -214,15 +216,18 @@ def run_council(
     return CouncilRunResult(convened=True, markdown=markdown)
 
 
-def _cursor_referenced(config: Config, mode: str, do_peer: bool) -> bool:
+def _cursor_needed_for(config: Config, personas: List[PersonaSpec], do_peer: bool) -> bool:
+    """Whether the SELECTED roster requires Cursor model discovery: any selected
+    advisor on cursor, the chairman on cursor, or (with peer review) a cross-family
+    reviewer that lands on the cursor backend."""
+
     if config.chairman_backend == "cursor":
         return True
-    if do_peer and (
-        config.peer_review_backend == "cursor"
-        or any(b == "cursor" for b in config.peer_review_backends.values())
-    ):
+    if any(p.backend == "cursor" for p in personas):
         return True
-    return any(p.backend == "cursor" for p in config.personas.get(mode, {}).values())
+    if do_peer and "cursor" in _peer_backends_used(config, personas):
+        return True
+    return False
 
 
 def _peer_backends_used(config: Config, personas: List[PersonaSpec]) -> Set[str]:

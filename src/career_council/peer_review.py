@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import random
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from string import ascii_uppercase
 from typing import Dict, List, Optional
 
@@ -36,9 +37,10 @@ def _pick_reviewer_model(advisor_family: str, pool: Dict[str, str], default_mode
     if candidates:
         family, model = candidates[0]
         return model, family
-    if pool:
-        family, model = next(iter(pool.items()))
-        return model, family
+    # No different-family reviewer is configured in the pool. Rather than grade a
+    # response with a model from its OWN family (which defeats the point of peer
+    # review), fall back to default_model. Cross-family diversity can't be
+    # guaranteed from a single-family pool - fix the pool config to restore it.
     return default_model, advisor_family
 
 
@@ -82,9 +84,15 @@ def run_peer_review(
         tasks_by_backend[backend_name].append(BackendTask(task_id=reviewer_for_key, prompt=prompt, model=model))
 
     outcomes_by_key: Dict[str, AgentOutcome] = {}
-    for backend_name, tasks in tasks_by_backend.items():
-        for task, outcome in zip(tasks, registry.get(backend_name).run_batch(tasks, cwd=cwd)):
-            outcomes_by_key[task.task_id] = outcome
+
+    def _run_group(item):
+        backend_name, tasks = item
+        return list(zip(tasks, registry.get(backend_name).run_batch(tasks, cwd=cwd)))
+
+    with ThreadPoolExecutor(max_workers=max(1, len(tasks_by_backend))) as pool:
+        for pairs in pool.map(_run_group, list(tasks_by_backend.items())):
+            for task, outcome in pairs:
+                outcomes_by_key[task.task_id] = outcome
 
     results: List[PeerReviewResult] = []
     for (reviewer_for_key, model, family, backend_name) in review_specs:

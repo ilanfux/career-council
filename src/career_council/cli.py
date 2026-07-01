@@ -174,8 +174,8 @@ def _persist_user_env(var: str, value: str) -> bool:
 
     try:
         if os.name == "nt":
-            subprocess.run(["setx", var, value], capture_output=True, text=True, timeout=15)
-            return True
+            proc = subprocess.run(["setx", var, value], capture_output=True, text=True, timeout=15)
+            return proc.returncode == 0
     except Exception:
         return False
     return False
@@ -295,7 +295,10 @@ def _cmd_models(args) -> int:
     for mode in VALID_MODES:
         print(f"  [{mode}]")
         for key, persona in config.personas[mode].items():
-            mark = "ok" if persona.model in set(available) else "fallback"
+            if persona.backend != "cursor":
+                mark = f"provider:{persona.backend}"  # not validated against the Cursor catalog
+            else:
+                mark = "ok" if persona.model in set(available) else "fallback"
             params = _fmt_params(persona.model_params)
             print(f"    {key}: {persona.model} ({mark}){params}")
     print(f"  chairman: {config.chairman_model}{_fmt_params(config.chairman_params)}")

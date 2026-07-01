@@ -169,6 +169,17 @@ def resolve_models(config: Config, available: List[str]) -> Config:
     available_set = set(available)
     warnings: List[str] = []
 
+    # The fallback model must itself be usable, or every "fallback" would point at
+    # an unavailable model. If the configured default is not available, pick a real
+    # one (prefer the cursor peer-review pool model, else a deterministic choice).
+    if config.default_model not in available_set:
+        pool_cursor = config.peer_review_pool.get("cursor")
+        replacement = pool_cursor if pool_cursor in available_set else sorted(available_set)[0]
+        warnings.append(
+            f"default_model '{config.default_model}' is unavailable -> using '{replacement}' as the fallback"
+        )
+        config.default_model = replacement
+
     def resolve(model_id: str, label: str) -> str:
         if not model_id:
             return config.default_model
@@ -200,6 +211,17 @@ def resolve_models(config: Config, available: List[str]) -> Config:
             if resolved != persona.model:
                 persona.model_params = {}  # dropped: params don't transfer across families
             persona.model = resolved
+
+    # A tier's heavy-model downgrade target is a Cursor id applied at selection
+    # time (after this resolution), so validate it here too or a quick-tier run
+    # could still assign an unavailable model.
+    for tier in config.tiers.values():
+        if tier.downgrade_model and tier.downgrade_model not in available_set:
+            warnings.append(
+                f"tier '{tier.name}': downgrade_model '{tier.downgrade_model}' unavailable "
+                f"-> falling back to '{config.default_model}'"
+            )
+            tier.downgrade_model = config.default_model
 
     config.model_warnings = warnings
     return config

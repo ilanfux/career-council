@@ -1,15 +1,18 @@
 """Parallel advisor dispatch across pluggable backends.
 
 Each persona runs on its configured backend and model. Cursor-backed personas
-run as grounded local agents that browse the repo; provider-backed personas get
-a bounded repo-context snapshot injected into their prompt. Tasks are grouped by
-backend so each backend runs its set concurrently. A single failed persona is
+run as grounded local agents that read the materials folder; provider-backed
+personas get a bounded materials-context snapshot injected into their prompt.
+Tasks are grouped by backend, and the backend groups run concurrently (each
+backend also parallelizes its own set internally). A single failed persona is
 captured as a failed AdvisorResult and never sinks the run.
 """
 
 from __future__ import annotations
 
+import sys
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
 from career_council.backends import BackendRegistry, BackendTask
@@ -31,8 +34,8 @@ def dispatch_advisors(
     if not personas:
         return []
 
-    # Compute the repo-context snapshot at most once, and only if a non-grounded
-    # backend actually needs it.
+    # Compute the materials-context snapshot at most once, and only if a
+    # non-grounded backend actually needs it.
     _ctx: Dict[str, str] = {}
 
     def repo_context() -> str:
@@ -41,14 +44,26 @@ def dispatch_advisors(
         return _ctx["value"]
 
     tasks_by_backend: Dict[str, List[BackendTask]] = defaultdict(list)
+    warned_empty = False
     for persona in personas:
         grounded = registry.get(persona.backend).grounded
+        ctx: Optional[str] = None
+        if not grounded:
+            ctx = repo_context()
+            if not ctx and not warned_empty:
+                print(
+                    f"warning: no groundable materials found in --cwd for non-grounded "
+                    f"backend '{persona.backend}'; provider advisors will rely only on the "
+                    f"brief. Put the resume/JD text under --cwd or paste it into the brief.",
+                    file=sys.stderr,
+                )
+                warned_empty = True
         prompt = build_advisor_prompt(
             persona,
             brief,
             mode,
             diff_scope,
-            repo_context=None if grounded else repo_context(),
+            repo_context=ctx,
             grounded=grounded,
         )
         tasks_by_backend[persona.backend].append(
@@ -56,10 +71,18 @@ def dispatch_advisors(
         )
 
     outcomes_by_key: Dict[str, AgentOutcome] = {}
-    for backend_name, tasks in tasks_by_backend.items():
+
+    def _run_group(item):
+        backend_name, tasks = item
         backend = registry.get(backend_name)
-        for task, outcome in zip(tasks, backend.run_batch(tasks, cwd=cwd)):
-            outcomes_by_key[task.task_id] = outcome
+        return list(zip(tasks, backend.run_batch(tasks, cwd=cwd)))
+
+    # Run each backend group concurrently. For the common single-backend config
+    # this is one worker (identical to sequential); hybrids fan out.
+    with ThreadPoolExecutor(max_workers=max(1, len(tasks_by_backend))) as pool:
+        for pairs in pool.map(_run_group, list(tasks_by_backend.items())):
+            for task, outcome in pairs:
+                outcomes_by_key[task.task_id] = outcome
 
     results: List[AdvisorResult] = []
     for persona in personas:
