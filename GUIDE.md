@@ -84,10 +84,10 @@ an explicit `--roster`.
 Manager, Candidate Advocate (Pragmatist), The Skeptic / Devil's Advocate.
 
 **Specialists by mode:**
-- **RESUME** — Resume/CV Writer, Personal Brand / LinkedIn, ATS / Keyword Optimizer.
-- **STRATEGY** — Personal Brand / LinkedIn, Networking Strategist, Skills-Gap Advisor.
-- **INTERVIEW** — Behavioral / STAR Coach, Technical Interviewer (AI Infra).
-- **OFFER** — Compensation / Negotiation Expert.
+- **RESUME** — Ghostwriter Detector (Human-Voice Authenticity Auditor), Resume/CV Writer, Personal Brand / LinkedIn, ATS / Keyword Optimizer.
+- **STRATEGY** — Ghostwriter Detector (Human-Voice Authenticity Auditor), Personal Brand / LinkedIn, Networking Strategist, Skills-Gap Advisor.
+- **INTERVIEW** — Ghostwriter Detector (Human-Voice Authenticity Auditor), Behavioral / STAR Coach, Technical Interviewer (AI Infra).
+- **OFFER** — Ghostwriter Detector (Human-Voice Authenticity Auditor), Compensation / Negotiation Expert.
 
 Each persona is assigned a model by **capability** (heavy judgment lenses get strong
 "thinking" models; light lenses get cheaper/faster ones) and **diversity** (roles are

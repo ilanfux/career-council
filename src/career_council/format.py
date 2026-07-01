@@ -13,11 +13,11 @@ from career_council.input import AdvisorResult, AgentOutcome, PersonaSpec, PeerR
 
 
 def _model_label(persona: PersonaSpec) -> str:
-    """`model` for the default Cursor backend; `model@backend` otherwise."""
+    """Uniform model-diversity label for user-facing attestation."""
 
-    if persona.backend and persona.backend != "cursor":
-        return f"{persona.model}@{persona.backend}"
-    return persona.model
+    backend = persona.backend or "cursor"
+    family = persona.family or "unknown"
+    return f"{persona.model}@{backend} ({family})"
 
 
 def render_output(
@@ -78,7 +78,7 @@ def _fallback_digest(advisors: List[AdvisorResult], peer_reviews: List[PeerRevie
     blocks: List[str] = []
     for advisor in advisors:
         if advisor.outcome.ok:
-            blocks.append(f"#### {advisor.persona.title} ({advisor.persona.model})\n{advisor.outcome.text.strip()}")
+            blocks.append(f"#### {advisor.persona.title} ({_model_label(advisor.persona)})\n{advisor.outcome.text.strip()}")
     if peer_reviews:
         usable = [p for p in peer_reviews if p.outcome.ok]
         if usable:

@@ -65,6 +65,9 @@ career-council run --mode resume --stakes thorough --cwd ./my-materials --brief-
 # RESUME review at the thorough tier (full roster + specialists + peer review)
 career-council run --mode resume --stakes thorough --cwd ./my-materials --brief-file brief.md
 
+# Run only the human-voice authenticity audit lens
+career-council run --mode resume --cwd ./my-materials --brief-file brief.md --roster ghostwriter_detector
+
 # INTERVIEW prep (brief on stdin), standard tier
 echo "Prep me for a Principal AI Infra interview at <company>" | career-council run --mode interview
 

@@ -95,6 +95,18 @@ _core: &core
 
 resume:
   <<: *core
+  ghostwriter_detector:
+    title: Ghostwriter Detector (Human-Voice Authenticity Auditor)
+    core: false
+    capability: medium
+    model: claude-sonnet-5
+    family: authenticity
+    backend: cursor
+    triggers: [ghostwriter, authenticity, ai-written, llm-written, human voice, tone audit]
+    lens: >-
+      Detect and remove signs a sharp reviewer would interpret as LLM-authored
+      writing. Prioritize plain, credible engineer voice while preserving every
+      factual claim, metric, and ownership boundary.
   resume_writer:
     title: Resume/CV Writer & Editor
     core: false
@@ -129,6 +141,18 @@ resume:
 
 strategy:
   <<: *core
+  ghostwriter_detector:
+    title: Ghostwriter Detector (Human-Voice Authenticity Auditor)
+    core: false
+    capability: medium
+    model: claude-sonnet-5
+    family: authenticity
+    backend: cursor
+    triggers: [ghostwriter, authenticity, ai-written, llm-written, human voice, tone audit]
+    lens: >-
+      Detect and remove signs a sharp reviewer would interpret as LLM-authored
+      writing. Prioritize plain, credible engineer voice while preserving every
+      factual claim, metric, and ownership boundary.
   linkedin_brand:
     title: Personal Brand / LinkedIn Expert
     core: false
@@ -164,6 +188,18 @@ strategy:
 
 interview:
   <<: *core
+  ghostwriter_detector:
+    title: Ghostwriter Detector (Human-Voice Authenticity Auditor)
+    core: false
+    capability: medium
+    model: claude-sonnet-5
+    family: authenticity
+    backend: cursor
+    triggers: [ghostwriter, authenticity, ai-written, llm-written, human voice, tone audit]
+    lens: >-
+      Detect and remove signs a sharp reviewer would interpret as LLM-authored
+      writing. Prioritize plain, credible engineer voice while preserving every
+      factual claim, metric, and ownership boundary.
   behavioral_coach:
     title: Behavioral / STAR Coach
     core: false
@@ -191,6 +227,18 @@ interview:
 
 offer:
   <<: *core
+  ghostwriter_detector:
+    title: Ghostwriter Detector (Human-Voice Authenticity Auditor)
+    core: false
+    capability: medium
+    model: claude-sonnet-5
+    family: authenticity
+    backend: cursor
+    triggers: [ghostwriter, authenticity, ai-written, llm-written, human voice, tone audit]
+    lens: >-
+      Detect and remove signs a sharp reviewer would interpret as LLM-authored
+      writing. Prioritize plain, credible engineer voice while preserving every
+      factual claim, metric, and ownership boundary.
   compensation:
     title: Compensation / Negotiation Expert
     core: false

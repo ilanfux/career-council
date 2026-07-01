@@ -31,8 +31,11 @@ Rules:
 - State which market (Israel / US) a piece of advice applies to whenever the two differ, and keep the local (IL) and US resume variants distinct.
 - Lean fully into your lens. Do NOT hedge or try to be balanced - other advisors cover the angles you don't. Synthesis comes later.
 - If this mode/stage genuinely doesn't touch your lens, say so in ONE line and stop. Don't manufacture concerns.
-- 150-300 words. No preamble. Be concrete and specific to THIS person.
-{mode_line}"""
+{length_rule}
+{mode_line}
+{persona_line}"""
+
+_DEFAULT_LENGTH_RULE = "- 150-300 words. No preamble. Be concrete and specific to THIS person."
 
 _MODE_LINES = {
     "resume": (
@@ -47,6 +50,25 @@ _MODE_LINES = {
     "offer": (
         "- Give real market ranges for the level and market (ILS total-cost vs USD base+equity+bonus) and a concrete counter script."
     ),
+}
+
+_PERSONA_LINES = {
+    "ghostwriter_detector": """- Run an explicit AI-writing detection checklist and flag EVERY instance with exact snippet + location:
+  - Punctuation tells: em dashes (—), spaced en dashes ( – ), arrow glyphs (→), spaced slashes ( / ), middot separators (·), curly/smart quotes/apostrophes.
+  - Sentence-pattern tells: repeated rule-of-three triads, "not just X, but Y", "it's not X, it's Y", "from X to Y", uniform bullet cadence, suspiciously balanced parallel structure.
+  - Vocabulary tells: leverage, robust, seamless, delve, tapestry, underscore, pivotal, testament, landscape, realm, showcase, elevate, meticulous, comprehensive, cutting-edge, spearheaded, "in today's fast-paced", "at the intersection of", empty intensifiers, manifesto lines, over-hedging.
+  - Structural tells: section pre-summaries, Title-Case overuse, templated heading symmetry.
+- Rewrite hard rules:
+  - Preserve every fact, metric, claim, and ownership boundary exactly.
+  - Never invent, inflate, or delete substantive content.
+  - Respect strict length constraints (for resumes: 2-page max); every addition must be paid by a cut.
+  - Rewrite into plain, ATS-safe engineer voice: commas/periods/parentheses/colons over exotic punctuation.
+- Output contract (use these exact sections):
+  1) AI-likelihood score (0-100) + one-line justification.
+  2) Line-by-line flag table: Location | Offending snippet | Why it reads AI | Human rewrite.
+  3) Top 5 highest-signal fixes (max suspicion reduction per unit effort).
+  4) Projected AI-likelihood score (0-100) after applying all fixes.
+- Keep the output compact but complete; prioritize the table and concrete rewrites over prose."""
 }
 
 _PEER_REVIEW_TEMPLATE = """{n} advisors independently analyzed this career {topic_noun}:
@@ -77,6 +99,13 @@ candidate's real materials; never invent achievements or findings. Explicitly
 resolve any Israel-vs-US or level-realism (is "Principal / Architect" the right
 target?) tension.
 
+If the Ghostwriter Detector persona is present, you MUST include a dedicated
+Human-Voice Authenticity section with:
+- before/after AI-likelihood scores,
+- conflicts where de-AI-ing a line might weaken a strong truthful claim,
+- the final agreed authenticity edits.
+If Ghostwriter Detector was not convened, explicitly say so in that section.
+
 The brief:
 ---
 {brief}
@@ -104,6 +133,12 @@ _Convened: <advisors> - skipped: <specialists + why>_
 ### Blind spots the council caught
 <things that only surfaced in peer review>
 
+### Human-Voice Authenticity
+- AI-likelihood before fixes: <0-100 or 'not run'>
+- AI-likelihood after agreed fixes: <0-100 or 'not run'>
+- Conflict reconciliation: <where authenticity edits could weaken truthful strong claims, and final decision>
+- Final authenticity edits: <the accepted edit set>
+
 ### Israel vs US
 <what to do differently per market / the two-resume split>
 
@@ -124,6 +159,12 @@ _Convened: <advisors> - skipped: <specialists + why>_
 
 ### Blind spots the council caught
 <things that only surfaced in peer review>
+
+### Human-Voice Authenticity
+- AI-likelihood before fixes: <0-100 or 'not run'>
+- AI-likelihood after agreed fixes: <0-100 or 'not run'>
+- Conflict reconciliation: <where authenticity edits could weaken truthful strong claims, and final decision>
+- Final authenticity edits: <the accepted edit set>
 
 ### Israel vs US
 <how the search/positioning should differ per market>
@@ -146,6 +187,12 @@ _Convened: <advisors> - skipped: <specialists + why>_
 ### Where you're exposed (drill these)
 <gaps the Skeptic + Technical Interviewer found>
 
+### Human-Voice Authenticity
+- AI-likelihood before fixes: <0-100 or 'not run'>
+- AI-likelihood after agreed fixes: <0-100 or 'not run'>
+- Conflict reconciliation: <where authenticity edits could weaken truthful strong claims, and final decision>
+- Final authenticity edits: <the accepted edit set>
+
 ### The one thing to prep first
 <a single concrete next step>"""
 
@@ -160,6 +207,12 @@ _Convened: <advisors> - skipped: <specialists + why>_
 
 ### The counter (script)
 <concrete numbers + wording>
+
+### Human-Voice Authenticity
+- AI-likelihood before fixes: <0-100 or 'not run'>
+- AI-likelihood after agreed fixes: <0-100 or 'not run'>
+- Conflict reconciliation: <where authenticity edits could weaken truthful strong claims, and final decision>
+- Final authenticity edits: <the accepted edit set>
 
 ### Walk-away line
 <the candidate's floor>"""
@@ -189,6 +242,8 @@ def build_advisor_prompt(
     """
 
     mode_line = _MODE_LINES.get(mode, "")
+    persona_line = _PERSONA_LINES.get(persona.key, "")
+    length_rule = _DEFAULT_LENGTH_RULE if not persona_line else ""
     if grounded:
         grounding = "Working directory: the folder holding the candidate's materials (resume, JD, notes) you can read with your tools."
         if diff_scope:
@@ -207,7 +262,9 @@ def build_advisor_prompt(
         mode=mode.upper(),
         grounding=grounding,
         read_rule=read_rule,
+        length_rule=length_rule,
         mode_line=mode_line,
+        persona_line=persona_line,
     )
 
 
