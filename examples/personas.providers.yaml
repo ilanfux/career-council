@@ -1,0 +1,65 @@
+# ── Provider-only override: NO Cursor, a token per model family ──────────────
+#
+# Use this when you do NOT have a Cursor key and want to run the council on your
+# own provider API keys. Copy to ~/.career-council/personas.yaml (DEEP-MERGES over
+# the defaults). Every convened persona, the director, and peer review are routed
+# to a provider backend, so no CURSOR_API_KEY is needed.
+#
+# Prerequisites (set the env vars for the providers you actually use):
+#   - OPENAI_API_KEY      (+ optional OPENAI_BASE_URL)   → `openai` backend
+#   - ANTHROPIC_API_KEY                                   → `anthropic` backend
+#   - GOOGLE_API_KEY (or GEMINI_API_KEY)                  → `google` backend
+#   - install the SDKs:  pip install 'career-council-runner[all]'
+#
+# IMPORTANT: the model ids below are EXAMPLES. Replace each with an id your
+# account actually exposes. Provider backends can't read your materials folder,
+# so keep the resume/JD text in the brief itself.
+#
+# Diversity note: real cross-family value needs at least two providers. With only
+# one provider key, every persona collapses onto one family (one blind spot).
+#
+# Verify:  python -m career_council run --mode resume --stakes thorough --brief x --dry-run
+
+default_model: gpt-4o            # safe fallback (must be a real id you can use)
+chairman_backend: openai
+chairman_model: gpt-4o
+
+# Peer reviewers run cross-family; map each family to its provider backend.
+peer_review_backend: openai
+peer_review_backends:
+  openai: openai
+  anthropic: anthropic
+  google: google
+peer_review_pool:
+  openai: gpt-4o
+  anthropic: claude-3-5-sonnet-latest
+  google: gemini-1.5-pro
+
+# Core lenses repeat across modes; define once and merge.
+_core: &core
+  career_strategist:    { backend: anthropic, model: claude-3-opus-latest }
+  recruiter:            { backend: openai,    model: gpt-4o }
+  hiring_manager:       { backend: openai,    model: gpt-4o }
+  candidate_advocate:   { backend: openai,    model: gpt-4o-mini, family: openai }
+  skeptic:              { backend: google,    model: gemini-1.5-pro }
+
+resume:
+  <<: *core
+  resume_writer:        { backend: openai,    model: gpt-4o-mini, family: openai }
+  linkedin_brand:       { backend: openai,    model: gpt-4o-mini }
+  ats_optimizer:        { backend: openai,    model: gpt-4o }
+
+strategy:
+  <<: *core
+  linkedin_brand:       { backend: openai,    model: gpt-4o-mini }
+  networking:           { backend: openai,    model: gpt-4o-mini }
+  skills_gap:           { backend: anthropic, model: claude-3-5-sonnet-latest }
+
+interview:
+  <<: *core
+  behavioral_coach:     { backend: anthropic, model: claude-3-5-sonnet-latest }
+  technical_interviewer: { backend: openai,   model: gpt-4o }
+
+offer:
+  <<: *core
+  compensation:         { backend: anthropic, model: claude-3-opus-latest }

@@ -1,0 +1,41 @@
+# ── Hybrid override: GPT personas on AutoX, Claude/Gemini/Composer on Cursor ──
+#
+# Copy to ~/.career-council/personas.yaml (it DEEP-MERGES over the shipped
+# defaults, so you only specify what changes). This keeps cross-family diversity
+# — the Claude/Gemini/Composer advisors stay on the grounded Cursor backend —
+# while routing the GPT/Codex advisors to your AutoX quota.
+#
+# Prerequisites:
+#   - CURSOR_API_KEY set (for the Claude/Gemini/Composer personas + director + peer review)
+#   - AUTOX_API_KEY and AUTOX_BASE_URL set (the `autox` backend is defined in backends.yaml)
+#   - the model ids below must be GPT models your AutoX gateway actually serves — edit them.
+#
+# Verify:  python -m career_council run --mode resume --stakes thorough --brief x --dry-run
+#
+# Only the openai-family personas are moved to AutoX. The anthropic (strategist,
+# skills_gap, behavioral_coach, compensation), google (skeptic), and cursor
+# (candidate_advocate, resume_writer) personas intentionally stay on Cursor.
+
+resume:
+  recruiter:            { backend: autox, model: gpt-4o }
+  hiring_manager:       { backend: autox, model: gpt-4o }
+  linkedin_brand:       { backend: autox, model: gpt-4o }
+  ats_optimizer:        { backend: autox, model: gpt-4o }
+
+strategy:
+  recruiter:            { backend: autox, model: gpt-4o }
+  hiring_manager:       { backend: autox, model: gpt-4o }
+  linkedin_brand:       { backend: autox, model: gpt-4o }
+  networking:           { backend: autox, model: gpt-4o }
+
+interview:
+  recruiter:            { backend: autox, model: gpt-4o }
+  hiring_manager:       { backend: autox, model: gpt-4o }
+  technical_interviewer: { backend: autox, model: gpt-4o }
+
+offer:
+  recruiter:            { backend: autox, model: gpt-4o }
+  hiring_manager:       { backend: autox, model: gpt-4o }
+
+# Director and peer review stay on Cursor (the default) — the Cursor backend
+# serves every family, so anonymized cross-family peer review still works.

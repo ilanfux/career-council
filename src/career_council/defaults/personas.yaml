@@ -1,0 +1,207 @@
+# Career Council roster + per-persona model assignment.
+#
+# Model ids are Cursor SDK base ids as returned by `career-council models`.
+# They are validated at runtime; any id your account cannot use falls back to
+# `default_model`. The tool never invents a slug. Reasoning-effort/max-mode are
+# model *parameters* (GPT/Codex use `reasoning`; Claude uses `effort`+`thinking`;
+# Gemini exposes none). On model fallback the params are dropped.
+#
+# `family` is used for peer-review diversity: a peer reviewer is always picked
+# from a different family than the advisor it grades.
+#
+# The five CORE personas (career_strategist, recruiter, hiring_manager,
+# candidate_advocate, skeptic) repeat in every mode so the `standard` tier
+# (roster: core) always convenes the essential tensions. Mode-specific
+# specialists are core:false and join only the `thorough` tier (roster: full)
+# or an explicit --roster.
+
+default_model: gpt-5.5
+
+# The Career Director synthesizes the final verdict. Strong general reasoner at
+# high effort because synthesis quality drives the whole verdict.
+chairman_model: gpt-5.5
+chairman_params:
+  reasoning: high
+
+# One model per family; peer reviewers are drawn from here, never matching the
+# reviewed advisor's family.
+peer_review_pool:
+  openai: gpt-5.4
+  anthropic: claude-sonnet-4-6
+  google: gemini-3.1-pro
+  cursor: composer-2.5
+
+# ---------------------------------------------------------------------------
+# Core lenses reused across modes (defined once here as YAML anchors).
+# ---------------------------------------------------------------------------
+_core: &core
+  career_strategist:
+    title: Career Strategist
+    core: true
+    capability: heavy
+    model: claude-opus-4-8
+    family: anthropic
+    model_params:
+      thinking: "true"
+      effort: high
+    lens: >-
+      The big picture. Does the target (Principal AI Engineer / AI Platform
+      Architect) fit this background? Positioning narrative, level realism, the
+      dual-market (Israel + US) strategy, and the overall search plan. The
+      "architect" of the council.
+  recruiter:
+    title: Recruiter / Talent Acquisition
+    core: true
+    capability: medium
+    model: gpt-5.4
+    family: openai
+    lens: >-
+      How the materials get screened in the real world: the 6-second scan, ATS
+      pass/fail, why a profile gets skipped, and how screening differs between
+      the Israeli and US markets. Represents the gate that must be cleared first.
+  hiring_manager:
+    title: Hiring Manager
+    core: true
+    capability: heavy
+    model: gpt-5.3-codex
+    family: openai
+    model_params:
+      reasoning: high
+    lens: >-
+      The person who would actually hire this candidate. Can they do THIS job?
+      Evidence of impact and scope at the target level, red flags they would
+      probe, and the real bar for "Principal / Architect".
+  candidate_advocate:
+    title: Candidate Advocate (Pragmatist)
+    core: true
+    capability: light
+    model: composer-2.5
+    family: cursor
+    lens: >-
+      Plays to the candidate's genuine strengths, keeps advice actionable now,
+      and resists over-polishing and analysis-paralysis. Clashes with the
+      Skeptic by design.
+  skeptic:
+    title: The Skeptic / Devil's Advocate
+    core: true
+    capability: heavy
+    model: gemini-3.1-pro
+    family: google
+    lens: >-
+      Assumes a weakness exists and hunts it: employment gaps, unquantified
+      claims, seniority/scope gap for Principal, buzzword-without-evidence,
+      "will this survive a sharp interviewer?" Grounds every doubt in the real
+      materials.
+
+resume:
+  <<: *core
+  resume_writer:
+    title: Resume/CV Writer & Editor
+    core: false
+    capability: light
+    model: composer-2.5
+    family: cursor
+    triggers: [resume, cv, bullet, wording, format, phrasing, layout]
+    lens: >-
+      Wording, structure, quantified bullets, formatting and ATS-friendliness.
+      Maintains the distinct IL and US resume variants and proposes concrete
+      rewrites for weak lines.
+  linkedin_brand:
+    title: Personal Brand / LinkedIn Expert
+    core: false
+    capability: light
+    model: gpt-5.4-mini
+    family: openai
+    triggers: [linkedin, profile, headline, about, brand, presence, visibility]
+    lens: >-
+      LinkedIn profile, headline, about section, recruiter-inbound visibility
+      and keyword discoverability in both markets.
+  ats_optimizer:
+    title: ATS / Keyword Optimizer
+    core: false
+    capability: medium
+    model: gpt-5.4
+    family: openai
+    triggers: [jd, job description, keyword, ats, must-have, requirement, title]
+    lens: >-
+      Match the resume against a SPECIFIC job description: keyword coverage,
+      missing must-haves, title alignment, and the concrete gaps to close.
+
+strategy:
+  <<: *core
+  linkedin_brand:
+    title: Personal Brand / LinkedIn Expert
+    core: false
+    capability: light
+    model: gpt-5.4-mini
+    family: openai
+    triggers: [linkedin, profile, headline, about, brand, presence, visibility]
+    lens: >-
+      LinkedIn profile, headline, about section, recruiter-inbound visibility
+      and keyword discoverability in both markets.
+  networking:
+    title: Networking Strategist
+    core: false
+    capability: light
+    model: gpt-5.4-mini
+    family: openai
+    triggers: [referral, network, intro, contact, warm, hidden job market, remote]
+    lens: >-
+      Referrals, warm intros (including leveraging family/contacts in Boston),
+      reaching hiring managers directly, the hidden job market, and remote/
+      time-zone positioning for US roles.
+  skills_gap:
+    title: Skills-Gap / Upskilling Advisor
+    core: false
+    capability: medium
+    model: claude-sonnet-4-6
+    family: anthropic
+    triggers: [gap, skill, upskilling, cert, project, portfolio, learn]
+    lens: >-
+      The honest gap between the current profile and the target role, and the
+      fastest, highest-leverage way to close it (projects, certs, visible
+      artifacts).
+
+interview:
+  <<: *core
+  behavioral_coach:
+    title: Behavioral / STAR Coach
+    core: false
+    capability: medium
+    model: claude-sonnet-4-6
+    family: anthropic
+    triggers: [behavioral, star, story, leadership, conflict, influence, tell me about]
+    lens: >-
+      Behavioral answers and storytelling: leadership, conflict, and
+      influence-without-authority (critical at principal level), structured via
+      STAR and mapped to the candidate's real experience.
+  technical_interviewer:
+    title: Technical Interviewer (AI Infra)
+    core: false
+    capability: heavy
+    model: gpt-5.3-codex
+    family: openai
+    model_params:
+      reasoning: high
+    triggers: [system design, architecture, technical, coding, ml, mlops, infra, distributed, platform, scalability]
+    lens: >-
+      For the target role: ML-platform / system design, distributed systems,
+      MLOps/infra depth, and architecture trade-offs. Probes for principal-level
+      technical substance ("explain a system you built").
+
+offer:
+  <<: *core
+  compensation:
+    title: Compensation / Negotiation Expert
+    core: false
+    capability: heavy
+    model: claude-opus-4-8
+    family: anthropic
+    model_params:
+      thinking: "true"
+      effort: high
+    triggers: [offer, salary, comp, compensation, negotiate, equity, bonus, base, counter]
+    lens: >-
+      Market bands for the level in each market (ILS total-cost vs USD base +
+      equity + bonus), offer evaluation, leverage, counter scripts, and the
+      competing-offer play.

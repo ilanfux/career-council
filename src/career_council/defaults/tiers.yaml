@@ -1,0 +1,36 @@
+# Stakes tiers control how much council (and therefore how much budget) a run
+# spends. The full diverse roster + peer review only runs at "thorough".
+
+# Soft monthly ceiling for the budget alarm, expressed as a number of agent
+# runs (advisors + peer reviewers + director) per calendar month. `career-council
+# usage` warns once usage crosses warn_fraction of this number.
+budget:
+  monthly_agent_run_ceiling: 600
+  warn_fraction: 0.6
+
+tiers:
+  trivial:
+    description: Trivial one-off questions. The tool refuses to convene.
+    convene: false
+
+  quick:
+    description: Fast gut-check. Core roster only, no peer review, cheaper models.
+    convene: true
+    roster: core
+    peer_review: false
+    downgrade_heavy: true
+    downgrade_model: gpt-5.4
+
+  standard:
+    description: Everyday use. Core roster (the five essential lenses), full models, no peer review.
+    convene: true
+    roster: core
+    peer_review: false
+    downgrade_heavy: false
+
+  thorough:
+    description: High-stakes (a real application, a live interview, an offer). Full roster + specialists + peer review.
+    convene: true
+    roster: full
+    peer_review: true
+    downgrade_heavy: false
