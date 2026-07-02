@@ -77,12 +77,24 @@ def dispatch_advisors(
         backend = registry.get(backend_name)
         return list(zip(tasks, backend.run_batch(tasks, cwd=cwd)))
 
-    # Run each backend group concurrently. For the common single-backend config
-    # this is one worker (identical to sequential); hybrids fan out.
-    with ThreadPoolExecutor(max_workers=max(1, len(tasks_by_backend))) as pool:
-        for pairs in pool.map(_run_group, list(tasks_by_backend.items())):
-            for task, outcome in pairs:
-                outcomes_by_key[task.task_id] = outcome
+    backend_groups = list(tasks_by_backend.items())
+
+    # Fast path: avoid ThreadPool + extra thread when only one backend is in use.
+    if len(backend_groups) == 1:
+        backend_results = [_run_group(backend_groups[0])]
+    else:
+        contains_cursor_backend = any(name == "cursor" for name, _ in backend_groups)
+        if sys.platform == "win32" and contains_cursor_backend:
+            # Cursor's async bridge relies on Windows subprocess pipes; running it
+            # inside worker threads can leave pipe transports in flaky states.
+            backend_results = [_run_group(group) for group in backend_groups]
+        else:
+            with ThreadPoolExecutor(max_workers=max(1, len(backend_groups))) as pool:
+                backend_results = list(pool.map(_run_group, backend_groups))
+
+    for pairs in backend_results:
+        for task, outcome in pairs:
+            outcomes_by_key[task.task_id] = outcome
 
     results: List[AdvisorResult] = []
     for persona in personas:

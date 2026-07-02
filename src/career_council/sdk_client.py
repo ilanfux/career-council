@@ -7,14 +7,19 @@ Why async: the SDK's *synchronous* bridge reads its subprocess startup line with
 `select.select()`, which on Windows only works on sockets (not pipes) and fails
 with WinError 10038. The *async* bridge uses asyncio subprocess streams, which
 work on Windows under the Proactor event loop. So we drive everything through the
-async API and bridge each stage with `asyncio.run()`.
+async API and bridge each stage through a defensive loop runner.
 """
 
 from __future__ import annotations
 
+import atexit
 import asyncio
+import contextlib
+import gc
 import os
 import sys
+import threading
+import time
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 from career_council.input import AgentOutcome
@@ -25,6 +30,14 @@ ModelSpec = Union[str, Mapping[str, Any]]
 AgentTask = Tuple[str, str, ModelSpec]
 # model id -> {param id -> set of allowed values}. Empty value-set means "any".
 ModelParamCatalog = Dict[str, Dict[str, Set[str]]]
+
+_WINDOWS_POLICY_LOCK = threading.Lock()
+_WINDOWS_ASYNC_RUN_LOCK = threading.Lock()
+_WINDOWS_LOOP_WORKER_LOCK = threading.Lock()
+_WINDOWS_POLICY_SET = False
+_WINDOWS_LOOP_WORKER: Optional["_WindowsLoopWorker"] = None
+_CURSOR_SDK_WINDOWS_PATCHED = False
+_BRIDGE_LAUNCH_MAX_ATTEMPTS = 3
 
 
 def build_model_selection(model_id: str, params: Optional[Mapping[str, str]] = None) -> Any:
@@ -61,16 +74,210 @@ def _import_sdk():
             "cursor-sdk is not installed. Install it with `pip install cursor-sdk` "
             f"(underlying error: {error})."
         ) from error
+    _patch_cursor_sdk_windows_teardown(cursor_sdk)
     return cursor_sdk
 
 
-def _run_async(coro):
-    """Run a coroutine on a fresh loop. Force the Proactor policy on Windows so
-    asyncio subprocess pipes (used by the SDK bridge) work."""
+def _patch_cursor_sdk_windows_teardown(cursor_sdk_module) -> None:
+    """Patch cursor-sdk bridge teardown on Windows to close pipe transports.
 
+    Without this, CPython 3.12 on Windows may emit `I/O operation on closed pipe`
+    from asyncio transport finalizers at interpreter shutdown. We patch narrowly:
+    keep upstream termination behavior, then explicitly close any subprocess pipe
+    transports while the event loop is still alive.
+    """
+
+    global _CURSOR_SDK_WINDOWS_PATCHED
+    if sys.platform != "win32" or _CURSOR_SDK_WINDOWS_PATCHED:
+        return
+    with _WINDOWS_POLICY_LOCK:
+        if _CURSOR_SDK_WINDOWS_PATCHED:
+            return
+        try:
+            from cursor_sdk import _async_bridge  # type: ignore
+        except Exception:
+            return
+
+        original_terminate = getattr(_async_bridge, "_terminate_process", None)
+        if original_terminate is None:
+            return
+
+        async def _patched_terminate_process(process):
+            try:
+                await original_terminate(process)
+            finally:
+                _close_subprocess_pipe_transports(process)
+                with contextlib.suppress(Exception):
+                    await asyncio.sleep(0)
+
+        _async_bridge._terminate_process = _patched_terminate_process
+        _CURSOR_SDK_WINDOWS_PATCHED = True
+
+
+def _close_subprocess_pipe_transports(process) -> None:
+    """Best-effort close of asyncio subprocess pipe transports."""
+
+    transport = getattr(process, "_transport", None)
+    get_pipe_transport = getattr(transport, "get_pipe_transport", None)
+    if callable(get_pipe_transport):
+        for fd in (0, 1, 2):
+            with contextlib.suppress(Exception):
+                pipe_transport = get_pipe_transport(fd)
+                if pipe_transport is not None and not pipe_transport.is_closing():
+                    pipe_transport.close()
+
+    for stream_name in ("stdin", "stdout", "stderr"):
+        stream = getattr(process, stream_name, None)
+        stream_transport = getattr(stream, "_transport", None)
+        if stream_transport is not None:
+            with contextlib.suppress(Exception):
+                if not stream_transport.is_closing():
+                    stream_transport.close()
+
+
+def _run_async(coro):
+    """Run a coroutine on a fresh loop with defensive Windows shutdown.
+
+    The Cursor async bridge uses subprocess pipes. On Windows, aggressively
+    creating/closing loops can race transport finalizers and surface noisy
+    `BaseSubprocessTransport.__del__` / `I/O operation on closed pipe` errors.
+    We set Proactor policy once, serialize bridge runs, and flush pending loop
+    callbacks before closing the loop.
+    """
+
+    _ensure_windows_proactor_policy()
     if sys.platform == "win32":
+        # Keep bridge subprocess lifecycle deterministic on Windows.
+        with _WINDOWS_ASYNC_RUN_LOCK:
+            return _get_windows_loop_worker().run(coro)
+    return _run_on_fresh_loop(coro)
+
+
+def _ensure_windows_proactor_policy() -> None:
+    global _WINDOWS_POLICY_SET
+    if sys.platform != "win32" or _WINDOWS_POLICY_SET:
+        return
+    with _WINDOWS_POLICY_LOCK:
+        if _WINDOWS_POLICY_SET:
+            return
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-    return asyncio.run(coro)
+        _WINDOWS_POLICY_SET = True
+
+
+def _run_on_fresh_loop(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+    finally:
+        _shutdown_loop(loop)
+        asyncio.set_event_loop(None)
+
+
+class _WindowsLoopWorker:
+    """Single long-lived loop for Windows asyncio subprocess stability."""
+
+    def __init__(self) -> None:
+        self._ready = threading.Event()
+        self._loop = asyncio.new_event_loop()
+        self._closed = False
+        self._thread = threading.Thread(
+            target=self._thread_main,
+            name="career-council-asyncio",
+            daemon=True,
+        )
+        self._thread.start()
+        self._ready.wait()
+
+    def _thread_main(self) -> None:
+        asyncio.set_event_loop(self._loop)
+        self._ready.set()
+        self._loop.run_forever()
+        _shutdown_loop(self._loop)
+        asyncio.set_event_loop(None)
+
+    def run(self, coro):
+        if self._closed:
+            raise RuntimeError("Windows asyncio runner is closed")
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(timeout=10)
+
+
+def _get_windows_loop_worker() -> _WindowsLoopWorker:
+    global _WINDOWS_LOOP_WORKER
+    with _WINDOWS_LOOP_WORKER_LOCK:
+        if _WINDOWS_LOOP_WORKER is None:
+            _WINDOWS_LOOP_WORKER = _WindowsLoopWorker()
+            atexit.register(_close_windows_loop_worker)
+        return _WINDOWS_LOOP_WORKER
+
+
+def _close_windows_loop_worker() -> None:
+    global _WINDOWS_LOOP_WORKER
+    with _WINDOWS_LOOP_WORKER_LOCK:
+        worker = _WINDOWS_LOOP_WORKER
+        _WINDOWS_LOOP_WORKER = None
+    if worker is not None:
+        worker.close()
+
+
+def _shutdown_loop(loop: asyncio.AbstractEventLoop) -> None:
+    """Best-effort loop shutdown without leaking subprocess transports."""
+
+    with contextlib.suppress(Exception):
+        loop.run_until_complete(asyncio.sleep(0))
+
+    pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
+    for task in pending:
+        task.cancel()
+    if pending:
+        with contextlib.suppress(Exception):
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
+    with contextlib.suppress(Exception):
+        loop.run_until_complete(loop.shutdown_asyncgens())
+    with contextlib.suppress(Exception):
+        loop.run_until_complete(loop.shutdown_default_executor())
+
+    # Encourage transport finalizers to run while the loop is still alive.
+    if sys.platform == "win32":
+        with contextlib.suppress(Exception):
+            gc.collect()
+        with contextlib.suppress(Exception):
+            loop.run_until_complete(asyncio.sleep(0))
+
+    with contextlib.suppress(Exception):
+        loop.close()
+
+
+def _run_with_bridge_retry(coro_factory):
+    """Retry transient bridge-launch failures (mostly Windows subprocess races)."""
+
+    for attempt in range(1, _BRIDGE_LAUNCH_MAX_ATTEMPTS + 1):
+        try:
+            return _run_async(coro_factory())
+        except Exception as error:
+            if attempt >= _BRIDGE_LAUNCH_MAX_ATTEMPTS or not _is_retryable_bridge_launch_error(error):
+                raise
+            time.sleep(0.5 * attempt)
+
+
+def _is_retryable_bridge_launch_error(error: Exception) -> bool:
+    message = _safe_str(error).lower()
+    markers = (
+        "timed out waiting for bridge discovery",
+        "bridge exited before discovery",
+        "missing value for --tool-callback-auth-token",
+        "invalid uuid",
+    )
+    return any(marker in message for marker in markers)
 
 
 def _fetch_raw_models(api_key: Optional[str] = None):
@@ -85,7 +292,7 @@ def _fetch_raw_models(api_key: Optional[str] = None):
         ) as client:
             return await client.list_models(api_key=key)
 
-    return _run_async(_run())
+    return _run_with_bridge_retry(_run)
 
 
 def list_models(api_key: Optional[str] = None) -> List[str]:
@@ -140,7 +347,7 @@ def run_agents_batch(tasks: Sequence[AgentTask], cwd: str, api_key: Optional[str
         ) as client:
             return await asyncio.gather(*[_one(client, prompt, model) for (_id, prompt, model) in tasks])
 
-    return _run_async(_run())
+    return _run_with_bridge_retry(_run)
 
 
 def run_agent(prompt: str, model: ModelSpec, cwd: str, api_key: Optional[str] = None) -> AgentOutcome:

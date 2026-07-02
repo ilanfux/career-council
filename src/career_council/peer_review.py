@@ -9,6 +9,7 @@ dominant finding. Reviewers run concurrently under one async bridge.
 from __future__ import annotations
 
 import random
+import sys
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from string import ascii_uppercase
@@ -89,10 +90,22 @@ def run_peer_review(
         backend_name, tasks = item
         return list(zip(tasks, registry.get(backend_name).run_batch(tasks, cwd=cwd)))
 
-    with ThreadPoolExecutor(max_workers=max(1, len(tasks_by_backend))) as pool:
-        for pairs in pool.map(_run_group, list(tasks_by_backend.items())):
-            for task, outcome in pairs:
-                outcomes_by_key[task.task_id] = outcome
+    backend_groups = list(tasks_by_backend.items())
+    if len(backend_groups) == 1:
+        backend_results = [_run_group(backend_groups[0])]
+    else:
+        contains_cursor_backend = any(name == "cursor" for name, _ in backend_groups)
+        if sys.platform == "win32" and contains_cursor_backend:
+            # Keep Cursor bridge execution on the caller thread on Windows; this
+            # avoids flaky subprocess-pipe teardown in worker threads.
+            backend_results = [_run_group(group) for group in backend_groups]
+        else:
+            with ThreadPoolExecutor(max_workers=max(1, len(backend_groups))) as pool:
+                backend_results = list(pool.map(_run_group, backend_groups))
+
+    for pairs in backend_results:
+        for task, outcome in pairs:
+            outcomes_by_key[task.task_id] = outcome
 
     results: List[PeerReviewResult] = []
     for (reviewer_for_key, model, family, backend_name) in review_specs:
