@@ -100,7 +100,7 @@ resume:
     core: false
     capability: medium
     model: claude-sonnet-5
-    family: authenticity
+    family: anthropic
     backend: cursor
     triggers: [ghostwriter, authenticity, ai-written, llm-written, human voice, tone audit]
     lens: >-
@@ -146,7 +146,7 @@ strategy:
     core: false
     capability: medium
     model: claude-sonnet-5
-    family: authenticity
+    family: anthropic
     backend: cursor
     triggers: [ghostwriter, authenticity, ai-written, llm-written, human voice, tone audit]
     lens: >-
@@ -193,7 +193,7 @@ interview:
     core: false
     capability: medium
     model: claude-sonnet-5
-    family: authenticity
+    family: anthropic
     backend: cursor
     triggers: [ghostwriter, authenticity, ai-written, llm-written, human voice, tone audit]
     lens: >-
@@ -232,7 +232,7 @@ offer:
     core: false
     capability: medium
     model: claude-sonnet-5
-    family: authenticity
+    family: anthropic
     backend: cursor
     triggers: [ghostwriter, authenticity, ai-written, llm-written, human voice, tone audit]
     lens: >-
