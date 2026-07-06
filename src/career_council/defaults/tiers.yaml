@@ -14,7 +14,9 @@ tiers:
     convene: false
 
   quick:
-    description: Fast gut-check. Core roster only, no peer review, cheaper models.
+    description: >-
+      Fast gut-check. Core roster only (including the mandatory ghostwriter
+      authenticity pass), no peer review, cheaper models.
     convene: true
     roster: core
     peer_review: false
@@ -22,7 +24,9 @@ tiers:
     downgrade_model: gpt-5.4
 
   standard:
-    description: Everyday use. Core roster (the five essential lenses), full models, no peer review.
+    description: >-
+      Everyday use. Core roster (the six essential lenses, including the
+      mandatory ghostwriter authenticity pass), full models, no peer review.
     convene: true
     roster: core
     peer_review: false

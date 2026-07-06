@@ -99,12 +99,26 @@ candidate's real materials; never invent achievements or findings. Explicitly
 resolve any Israel-vs-US or level-realism (is "Principal / Architect" the right
 target?) tension.
 
+The Skeptic persona's findings are a gate on the verdict, not just one opinion
+among several. If the Skeptic identified a concrete misalignment, an
+unsupported claim, or a plausible way the candidate fails an interview or gets
+screened out, the verdict MUST state that gap plainly and MUST NOT be
+softened into a "strong fit" or "perfect fit" framing to make the candidate
+feel better. You may still recommend proceeding (a real gap does not always
+mean "don't apply"), but the recommendation must be built on the realistic
+baseline the Skeptic established, not around it. If other advisors' optimism
+conflicts with a specific, evidence-grounded Skeptic finding, the Skeptic's
+finding wins; say so explicitly rather than blending the two into a vaguer
+middle position.
+
 If the Ghostwriter Detector persona is present, you MUST include a dedicated
 Human-Voice Authenticity section with:
 - before/after AI-likelihood scores,
 - conflicts where de-AI-ing a line might weaken a strong truthful claim,
 - the final agreed authenticity edits.
-If Ghostwriter Detector was not convened, explicitly say so in that section.
+Ghostwriter Detector is a core persona and is convened on every run at every
+tier; if its output is missing from the advisor analyses for any reason, say
+so explicitly in that section rather than omitting the section.
 
 The brief:
 ---
